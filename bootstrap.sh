@@ -103,10 +103,10 @@ boostrap_tahoe(){
     # note: this step will needlessly try to connect to the internet, but on
     # Tails it will be unable to connect due to firewall rules. See
     # https://tahoe-lafs.org/trac/tahoe-lafs/ticket/2055 for more information.
-    export http_proxy=""
-    export HTTP_PROXY=""
-    export https_proxy=""
-    export HTTPS_PROXY=""
+    export http_proxy="127.0.0.1:1"
+    export HTTP_PROXY="127.0.0.1:1"
+    export https_proxy="127.0.0.1:1"
+    export HTTPS_PROXY="127.0.0.1:1"
     python setup.py build
     [ -L /usr/local/bin/tahoe ] || sudo ln -s $(readlink -f .)/bin/tahoe /usr/local/bin/tahoe
     popd
