@@ -1,8 +1,12 @@
 #!/bin/bash
-web_port=7657 # BUG: need to figure out how tails is opening this port. If
-              # you're not using Tails, you might want to uncomment the line
-              # below and use the default web port instead:
-#web_port=3456
+#
+# This is the Tahoe-on-Tails Onion Grid bootstrap script.
+#
+# You can also run it as an unprivileged user on other Debian systems if you
+# first apt-get install build-essential python-dev tor torsocks
+#
+# 
+
 intro_furl=pb://ifwpslh5f4jx2s3tzkkj4cyymrcxcunz@bvkb2rnvjbep4sjz.onion:58086/introducer
 grid_news_read_cap=URI:DIR2-RO:j7flrry23hfiix55xdakehvayy:pn7wdmukxulpwxc3khdwqcmahdusgvfljjt4gx5oe4z35cyxngga
 git_url=https://github.com/leif/tahoe-lafs
@@ -10,6 +14,14 @@ git_branch=truckee
 deps_sha1="bfc0798f5f332ad5edb6d259391e4bb917283c17"
 depstgz=tahoe-deps.tar.gz
 depsurl=https://tahoe-lafs.org/source/tahoe-lafs/deps/$depstgz
+
+if [ "$USERNAME" == "amnesia" ]; then
+    web_port=7657 # BUG: using i2p's port in Tails because it is somehow
+                  # accessible to Iceweasel while other ports aren't.
+else
+    web_port=3456
+fi
+
 main() {
     if [ "$1" == "" ]; then
         echo "usage: $0 TARGET_DIR"
@@ -26,9 +38,9 @@ main() {
     clear
     cat <<EOF
 This is a hacky (but hopefully idempotent) script that "securely" (relying on
-HTTPS) bootstraps a Tahoe-LAFS client node and connects it to a Tor Hidden
-Service-based grid. It has been tested on Tails 0.19 but should work on any
-recent debian system with tor and torsocks installed.
+HTTPS) bootstraps a Truckee Tahoe-LAFS client node and connects it to a Tor
+Hidden Service-based grid. It has been tested on Tails 0.19 but should work on
+any recent debian system with tor and torsocks installed.
 
 Quickstart instructions for Tails users:
  1. Create a persistent volume (Applications->Tails->Configure persistent
@@ -64,10 +76,11 @@ work while you're also running i2p.
 EOF
     read
     set -x
-    boostrap_tahoe
     [ "$(dpkg -l|egrep 'ii  (tor |torsocks)'|wc -l)" == 2 ] || \
-    sudo apt-get install tor torsocks
-    start_new_client $(pwd)/tahoe-client $intro_furl $web_port
+        sudo apt-get install tor torsocks
+    boostrap_tahoe
+    create_client_node $(pwd)/tahoe-client $intro_furl $web_port
+    usewithtor tahoe restart
     set +x
     wait_for_n_servers 5 $web_port
     echo "Creating 'tahoe:' alias"
@@ -87,10 +100,11 @@ EOF
 
 boostrap_tahoe(){
     # this function is intended to idempotently and securely (relying on https)
-    # install tahoe. everything will be contained within the tahoe-lafs
-    # directory except for a symlink which is placed in /usr/local/bin
+    # install Tahoe from git. Everything will be contained within the
+    # tahoe-lafs directory except for an optional symlink which is placed in
+    # /usr/local/bin
     [ "$(dpkg -l|egrep 'ii  (build-essential|python-dev)'|wc -l)" == 2 ] || \
-    sudo apt-get install build-essential python-dev
+        sudo apt-get install build-essential python-dev
     [ -d tahoe-lafs ] || \
     usewithtor git clone $git_url
     pushd tahoe-lafs
@@ -108,10 +122,18 @@ boostrap_tahoe(){
     export https_proxy="127.0.0.1:1"
     export HTTPS_PROXY="127.0.0.1:1"
     python setup.py build
-    [ -L /usr/local/bin/tahoe ] || sudo ln -s $(readlink -f .)/bin/tahoe /usr/local/bin/tahoe
+    if [ ! -L /usr/local/bin/tahoe ] &&
+       [ "$(read 'Install symlink is /usr/local/bin? [yN]')" == "y" ]; then
+        sudo ln -s $(readlink -f .)/bin/tahoe /usr/local/bin/tahoe
+    else
+        PATH="$PATH:$(readlink -f .)/bin/"
+        echo "OK, perhaps you should put this in your .bashrc:"
+        echo 'PATH="$PATH:$(readlink -f .)/bin/"'
+        echo
+    fi
     popd
 }
-start_new_client() {
+create_client_node() {
     client_dir=$1
     intro_furl=$2
     web_port=$3
@@ -126,8 +148,6 @@ start_new_client() {
     fi
     ln -sf $(readlink -f $client_dir) ~/.tahoe
     [ "$(readlink -f ~/.tahoe)" != "$(readlink -f $client_dir)" ] && echo "~/.tahoe is not a symlink to $client_dir; aborting" && exit
-    usewithtor tahoe restart
-    # sudo iptables -I OUTPUT -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport $web_port -j ACCEPT # not necessary if using the i2p web port which is already open (this iptables command opens the desired port but iceweasel still cannot connect if it isn't the i2p port)
 }
 wait_for_n_servers() {
     n=$1
